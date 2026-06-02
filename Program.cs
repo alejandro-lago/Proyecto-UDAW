@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TfgApi.Data;
 using TfgApi.Models;
+using TfgApi.Repositories;
 using TfgApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,7 +18,7 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(builder
 //  AddHttpClient creates a HttpClient and inject it into the services
 //  AddScoped creates one instance per HTTP request
 builder.Services.AddHttpClient<IExerciseApiService, ExerciseApiService>();
-builder.Services.AddScoped<IExerciseApiService, ExerciseApiService>();
+builder.Services.AddScoped<IExerciseRepository, ExerciseRepository>();
 
 // Add ASP.NET Core Identity
 builder.Services.AddIdentity<User, IdentityRole>()
