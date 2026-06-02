@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TfgApi.Data;
 using TfgApi.Models;
+using TfgApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Adds PostgreSQL Database Context with Identity
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+//  I register my services so ASP.NET can inject them into the controllers
+//  AddHttpClient creates a HttpClient and inject it into the services
+//  AddScoped creates one instance per HTTP request
+builder.Services.AddHttpClient<IExerciseApiService, ExerciseApiService>();
+builder.Services.AddScoped<IExerciseApiService, ExerciseApiService>();
 
 // Add ASP.NET Core Identity
 builder.Services.AddIdentity<User, IdentityRole>()
