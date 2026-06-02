@@ -22,7 +22,7 @@ public class ExerciseApiService : IExerciseApiService
         //  Here I build the URL query string step by step, I use a List of strings since is easier to add parts conditionally
         var queryParts = new List<string>();
         if (!string.IsNullOrEmpty(name)) queryParts.Add($"name={Uri.EscapeDataString(name)}");
-        if (!string.IsNullOrEmpty(muscle)) queryParts.Add($"name={Uri.EscapeDataString(muscle)}");
+        if (!string.IsNullOrEmpty(muscle)) queryParts.Add($"muscle={Uri.EscapeDataString(muscle)}");
         queryParts.Add($"page={page}");
         queryParts.Add($"pageSize={pageSize}");
 
@@ -32,7 +32,7 @@ public class ExerciseApiService : IExerciseApiService
         //  "await" means it will wait until it gets an answer, but without blocking the program
         //  "GetFromJsonAsync" sends GET request and then, transform the recieved JSON into a C# object
         //  and with the "ExerciseSearchResponse" gives the shape
-        var response = await this.httpClient.GetFromJsonAsync<ExerciseSearchResponse>($"exercise?{queryString}");
+        var response = await this.httpClient.GetFromJsonAsync<ExerciseSearchResponse>($"exercises?{queryString}");
 
         //  If the api fails getting a null response, it will return an empty list instead of crashing
         //  thanks to the "??" which means that "if it is null, use this instead" (null-coalescing operator)
