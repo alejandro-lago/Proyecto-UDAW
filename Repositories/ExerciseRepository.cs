@@ -44,7 +44,7 @@ public class ExerciseRepository : IExerciseRepository
 
     public async Task UpdateAsync(Exercise exercise)
     {
-        await context.Exercises.AddAsync(exercise);
+        context.Exercises.Update(exercise);
         await context.SaveChangesAsync();
     }
 }
