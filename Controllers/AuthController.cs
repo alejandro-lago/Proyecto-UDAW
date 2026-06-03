@@ -1,3 +1,7 @@
+using System.IdentityModel.Tokens.Jwt;
+using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using TfgApi.Models;
@@ -10,11 +14,13 @@ public class AuthController : ControllerBase    // ControllBase has helpers such
 {
     private readonly UserManager<User> userManager; //  Identity's class to create/find users in the DB
     private readonly SignInManager<User> signInManager; //  Identity's class to check passwords and log users in
+    private readonly IConfiguration configuration;
 
-    public AuthController( UserManager<User> userManager, SignInManager<User> signInManager)
+    public AuthController( UserManager<User> userManager, SignInManager<User> signInManager, IConfiguration configuration)
     {
         this.userManager = userManager;
         this.signInManager = signInManager;
+        this.configuration = configuration;
     }
 
     [HttpPost("register")]
@@ -46,10 +52,19 @@ public class AuthController : ControllerBase    // ControllBase has helpers such
             });
         }
 
+        var token = GenerateJwtToken(user);
+
         return Ok( new AuthResponse
         {
            Success = true,
-           Message = "User Registered Succesfully" 
+           Message = "User Registered Succesfully",
+           Token = token,
+           User = new UserProfileResponse
+           {
+               Id = user.Id,
+               Email = user.Email,
+               FullName = $"{user.FirstName} {user.LastName}"
+           }
         });
     }
     [HttpPost("login")]
@@ -68,11 +83,13 @@ public class AuthController : ControllerBase    // ControllBase has helpers such
         }
 
         var user = await userManager.FindByEmailAsync(request.Email);
+        var token = GenerateJwtToken(user!);
 
         return Ok( new AuthResponse
         {
             Success = true,
             Message = "Login Successful",
+            Token = token,
             User = new UserProfileResponse
             {
                 Id = user!.Id,
@@ -80,6 +97,39 @@ public class AuthController : ControllerBase    // ControllBase has helpers such
                 FullName = $"{user.FirstName} {user.LastName}"
             }
         });
+    }
+
+    //  JWT (JSON Web Token) is a digital keycard, a string of text that proves who you are
+    //  It has 3 parts, HEADER, PAYLOAD and SIGNATURE
+    //  HEADER - Says, Im a JWT using this algorithm
+    //  PAYLOAD - His data (userid, email, name)
+    //  Why JWT and not cookies? browsers send cookies automatically, but REACT need to explicitly send the token in every request, and it seems that JWT it's the standard
+    private string GenerateJwtToken(User user)
+    {
+        var jwtKey = configuration["Jwt:Key"]!; //  Gets config values (key, issuer, audience, expiry)
+        var jwtIssuer = configuration["Jwt:Issuer"]!;
+        var jwtAudience = configuration["Jwt:Audience"]!;
+        var expireMinutes = int.Parse(configuration["Jwt:ExpireMinutes"] ?? "60");
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id),
+            new Claim(ClaimTypes.Email, user.Email ?? ""),
+            new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}")
+        };
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: jwtIssuer,
+            audience: jwtAudience,
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(expireMinutes),
+            signingCredentials: credentials
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }
 
