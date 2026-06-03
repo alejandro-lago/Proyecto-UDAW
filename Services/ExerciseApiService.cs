@@ -45,9 +45,9 @@ public class ExerciseApiService : IExerciseApiService
         return response?.Data;
     }
 
-    public async Task<ExerciseItemDTO?> GetRandomExerciseAsync()
+    /*public async Task<ExerciseItemDTO?> GetRandomExerciseAsync()
     {
         var response = await this.httpClient.GetFromJsonAsync<ExerciseApiResponse>("exercise/random");
         return response?.Data;
-    }
+    }*/
 }

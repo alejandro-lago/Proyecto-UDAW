@@ -43,11 +43,11 @@ public class ExerciseController : ControllerBase
         return Ok(results);
     }
 
-    [HttpGet("random")]
+    /*[HttpGet("random")]
     public async Task<ActionResult<ExerciseItemDTO>> Random()
     {
         var result = await apiService.GetRandomExerciseAsync();
         if (result == null) return NotFound("Could not fetch Random Exercise");
         return Ok(result);
-    }
+    }*/
 }
