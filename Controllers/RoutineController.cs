@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TfgApi.Data;
 using TfgApi.Models;
+using TfgApi.Services;
 
 namespace TfgApi.Controllers;
 
@@ -14,11 +15,13 @@ public class RoutineController : ControllerBase
 {
     private readonly AppDbContext context;
     private readonly UserManager<User> userManager;
+    private readonly IExerciseApiService apiService;
 
-    public RoutineController(AppDbContext context, UserManager<User> userManager)
+    public RoutineController(AppDbContext context, UserManager<User> userManager, IExerciseApiService apiService)
     {
         this.context = context;
         this.userManager = userManager;
+        this.apiService = apiService;
     }
 
     [HttpGet]
@@ -57,21 +60,27 @@ public class RoutineController : ControllerBase
         var user = await userManager.GetUserAsync(User);
         if (user == null) return Unauthorized();
 
+        var routineExercises = new List<RoutineExercise>();
+        foreach (var e in request.Exercises)
+        {
+            routineExercises.Add(new RoutineExercise
+            {
+                ExerciseId = await ResolveExerciseId(e),
+                OrderInRoutine = e.Order,
+                Sets = e.Sets,
+                Reps = e.Reps.ToString(),
+                RestTimeSeconds = e.RestTimeSeconds,
+                Notes = e.Notes
+            });
+        }
+
         var routine = new Routine
         {
             Name = request.Name,
             Description = request.Description ?? "",
             UserId = user.Id,
             DayOfWeekId = request.DayOfWeek,
-            RoutineExercises = request.Exercises.Select(e => new RoutineExercise
-            {
-                ExerciseId = e.ExerciseId,
-                OrderInRoutine = e.Order,
-                Sets = e.Sets,
-                Reps = e.Reps.ToString(),
-                RestTimeSeconds = e.RestTimeSeconds,
-                Notes = e.Notes
-            }).ToList()
+            RoutineExercises = routineExercises
         };
 
         context.Routines.Add(routine);      //  Prepare the new routine to be inserted
@@ -103,16 +112,22 @@ public class RoutineController : ControllerBase
         routine.DayOfWeekId = request.DayOfWeek;
 
         context.RoutineExercises.RemoveRange(routine.RoutineExercises);
-        routine.RoutineExercises = request.Exercises.Select(e => new RoutineExercise
+
+        var routineExercises = new List<RoutineExercise>();
+        foreach(var e in request.Exercises)
         {
-            RoutineId = routine.Id,
-            ExerciseId = e.ExerciseId,
-            OrderInRoutine = e.Order,
-            Sets = e.Sets,
-            Reps = e.Reps.ToString(),
-            RestTimeSeconds = e.RestTimeSeconds,
-            Notes = e.Notes
-        }).ToList();
+           routineExercises.Add(new RoutineExercise
+            {
+                RoutineId = routine.Id,
+                ExerciseId = await ResolveExerciseId(e),
+                OrderInRoutine = e.Order,
+                Sets = e.Sets,
+                Reps = e.Reps.ToString(),
+                RestTimeSeconds = e.RestTimeSeconds,
+                Notes = e.Notes
+            });
+        }
+        routine.RoutineExercises = routineExercises;
 
         await context.SaveChangesAsync();
 
@@ -159,5 +174,42 @@ public class RoutineController : ControllerBase
               Notes = re.Notes
           }).ToList()
         };
+    }
+
+    private async Task<int> ResolveExerciseId(RoutineExerciseRequest request)
+    {
+        //  If the exercise exists, use it directly
+        if(request.ExerciseId.HasValue) return request.ExerciseId.Value;
+
+        if(!string.IsNullOrEmpty(request.ExternalApiId))
+        {
+            var existing = await context.Exercises
+                .FirstOrDefaultAsync(e => e.ExternalApiId == request.ExternalApiId);
+
+            if(existing != null) return existing.Id;
+
+            var apiExercise = await apiService.GetExerciseByIdAsync(request.ExternalApiId);
+            if(apiExercise != null)
+            {
+                var exercise = new Exercise
+                {
+                    ExternalApiId = apiExercise.ExerciseId,
+                    Name = apiExercise.Name,
+                    Description = "",
+                    BodyParts = apiExercise.BodyParts,
+                    TargetMuscles = apiExercise.TargetMuscles,
+                    SecondaryMuscles = apiExercise.SecondaryMuscles,
+                    Equipments = apiExercise.Equipments,
+                    GifUrl = apiExercise.GifUrl,
+                    Instructions = apiExercise.Instructions
+                };
+
+                context.Exercises.Add(exercise);
+                await context.SaveChangesAsync();
+                return exercise.Id;
+            }
+        }
+
+        throw new BadHttpRequestException("Either exerciseId or externalApiId must be provided"); 
     }
 }

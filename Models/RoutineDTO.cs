@@ -19,8 +19,8 @@ public class RoutineRequest
 
 public class RoutineExerciseRequest
 {
-    [Required]
-    public int ExerciseId { get; set; }
+    public int? ExerciseId { get; set; }
+    public string? ExternalApiId { get; set; }
     
     public int Order { get; set; }
     public int Sets { get; set; } = 3;
