@@ -59,12 +59,13 @@ public class AuthController : ControllerBase    // ControllBase has helpers such
            Success = true,
            Message = "User Registered Succesfully",
            Token = token,
-           User = new UserProfileResponse
-           {
-               Id = user.Id,
-               Email = user.Email,
-               FullName = $"{user.FirstName} {user.LastName}"
-           }
+            User = new UserProfileResponse
+            {
+                Email = user.Email,
+                FullName = $"{user.FirstName} {user.LastName}",
+                FirstName = user.FirstName,
+                PhoneNumber = user.PhoneNumber
+            }
         });
     }
     [HttpPost("login")]
@@ -92,9 +93,10 @@ public class AuthController : ControllerBase    // ControllBase has helpers such
             Token = token,
             User = new UserProfileResponse
             {
-                Id = user!.Id,
                 Email = user.Email!,
-                FullName = $"{user.FirstName} {user.LastName}"
+                FullName = $"{user.FirstName} {user.LastName}",
+                FirstName = user.FirstName,
+                PhoneNumber = user.PhoneNumber
             }
         });
     }

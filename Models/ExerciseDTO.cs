@@ -2,13 +2,11 @@ namespace TfgApi.Models;
 
 public class ExerciseApiResponse
 {
-    public bool Success { get; set; }
     public ExerciseItemDTO? Data { get; set; }
 }
 
 public class ExerciseSearchResponse
 {
-    public bool Success { get; set; }
     public List<ExerciseItemDTO> Data { get; set; } = new();
 }
 

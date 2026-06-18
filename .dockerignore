@@ -1,0 +1,12 @@
+bin/
+obj/
+.git/
+.gitignore
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.env
+*.md
+*.md5
+*.zip
+*.tar.gz

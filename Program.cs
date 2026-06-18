@@ -22,7 +22,10 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(builder
 //  I register my services so ASP.NET can inject them into the controllers
 //  AddHttpClient creates a HttpClient and inject it into the services
 //  AddScoped creates one instance per HTTP request
-builder.Services.AddHttpClient<IExerciseApiService, ExerciseApiService>();
+builder.Services.AddHttpClient<IExerciseApiService, ExerciseApiService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
 builder.Services.AddScoped<IExerciseRepository, ExerciseRepository>();
 
 // Add ASP.NET Core Identity
@@ -76,12 +79,15 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// CORS — allow React on localhost:5173 (Vite default) or localhost:3000
+// CORS — allow React origins from config/env; defaults for local dev
+var corsOrigins = builder.Configuration["CORS_ORIGINS"] ?? "http://localhost:5173,http://localhost:5174,http://localhost:3000";
+var origins = corsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://localhost:3000")
+        policy.WithOrigins(origins)
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -96,7 +102,6 @@ if (app.Environment.IsDevelopment())
     // app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
 app.UseCors("AllowReact");
 app.UseAuthentication();
 app.UseAuthorization();

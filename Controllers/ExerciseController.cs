@@ -33,13 +33,20 @@ public class ExerciseController : ControllerBase
         return exercise;
     }
 
+    [HttpGet("all")]
+    public async Task<ActionResult<List<ExerciseItemDTO>>> GetAllFromApi()
+    {
+        var results = await apiService.GetAllExercisesAsync();
+        return Ok(results);
+    }
+
     [HttpGet("search")]
     public async Task<ActionResult<List<ExerciseItemDTO>>> Search(
         [FromQuery] string? name,
-        [FromQuery] string? muscle,
+        [FromQuery] string? bodyParts,
         [FromQuery] int page = 1)
     {
-        var results = await apiService.SearchExerciseAsync(name, muscle, page);
+        var results = await apiService.SearchExerciseAsync(name, bodyParts, page);
         return Ok(results);
     }
 

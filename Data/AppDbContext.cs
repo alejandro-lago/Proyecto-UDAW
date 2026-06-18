@@ -15,9 +15,9 @@ namespace TfgApi.Data
         public DbSet<Exercise> Exercises { get; set; }
         public DbSet<DayOfWeek> DayOfWeeks { get; set; }
         public DbSet<Routine> Routines { get; set; }
+        public DbSet<RoutineDay> RoutineDays { get; set; }
         public DbSet<RoutineExercise> RoutineExercises { get; set; }
 
-        // Overriding SaveChangesAsync to implement the "Automatic Update" logic
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             var entries = ChangeTracker.Entries<Routine>();
@@ -26,7 +26,6 @@ namespace TfgApi.Data
             {
                 if (entry.State == EntityState.Modified)
                 {
-                    // When a Routine is modified, we update its CreatedAt field
                     entry.Entity.CreatedAt = DateTime.UtcNow;
                 }
             }
@@ -38,7 +37,6 @@ namespace TfgApi.Data
         {
             base.OnModelCreating(builder);
 
-            // Configure Exercise entity
             builder.Entity<Exercise>(entity =>
             {
                 entity.HasIndex(e => e.ExternalApiId).IsUnique();
@@ -47,7 +45,6 @@ namespace TfgApi.Data
                 entity.Property(e => e.GifUrl).HasMaxLength(500);
             });
 
-            // Configure DayOfWeek entity
             builder.Entity<DayOfWeek>(entity =>
             {
                 entity.HasIndex(d => d.Name).IsUnique();
@@ -63,26 +60,35 @@ namespace TfgApi.Data
                 );
             });
 
-            // Configure Routine entity
             builder.Entity<Routine>(entity =>
             {
                 entity.Property(r => r.Name).IsRequired().HasMaxLength(200);
                 entity.Property(r => r.Description).HasMaxLength(1000);
                 entity.Property(r => r.CreatedAt).HasDefaultValueSql("now()");
 
-                // Relationships
                 entity.HasOne(r => r.User)
                     .WithMany(u => u.Routines)
                     .HasForeignKey(r => r.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
 
-                entity.HasOne(r => r.DayOfWeek)
+            builder.Entity<RoutineDay>(entity =>
+            {
+                entity.HasKey(rd => rd.Id);
+
+                entity.HasIndex(rd => new { rd.RoutineId, rd.DayOfWeekId }).IsUnique();
+
+                entity.HasOne(rd => rd.Routine)
+                    .WithMany(r => r.RoutineDays)
+                    .HasForeignKey(rd => rd.RoutineId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(rd => rd.DayOfWeek)
                     .WithMany()
-                    .HasForeignKey(r => r.DayOfWeekId)
+                    .HasForeignKey(rd => rd.DayOfWeekId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
-            // Configure RoutineExercise entity (join entity with payload)
             builder.Entity<RoutineExercise>(entity =>
             {
                 entity.HasKey(re => re.Id);

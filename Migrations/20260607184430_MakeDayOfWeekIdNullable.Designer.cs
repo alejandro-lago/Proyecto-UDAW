@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TfgApi.Data;
@@ -12,9 +13,11 @@ using TfgApi.Data;
 namespace TFG_Proyect.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260607184430_MakeDayOfWeekIdNullable")]
+    partial class MakeDayOfWeekIdNullable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -293,6 +296,9 @@ namespace TFG_Proyect.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<int?>("DayOfWeekId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -309,33 +315,11 @@ namespace TFG_Proyect.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DayOfWeekId");
+
                     b.HasIndex("UserId");
 
                     b.ToTable("Routines");
-                });
-
-            modelBuilder.Entity("TfgApi.Models.RoutineDay", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("DayOfWeekId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("RoutineId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DayOfWeekId");
-
-                    b.HasIndex("RoutineId", "DayOfWeekId")
-                        .IsUnique();
-
-                    b.ToTable("RoutineDays");
                 });
 
             modelBuilder.Entity("TfgApi.Models.RoutineExercise", b =>
@@ -391,9 +375,6 @@ namespace TFG_Proyect.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer");
 
-                    b.Property<string>("Bio")
-                        .HasColumnType("text");
-
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text");
@@ -441,9 +422,6 @@ namespace TFG_Proyect.Migrations
 
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
-
-                    b.Property<string>("ProfilePictureUrl")
-                        .HasColumnType("text");
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
@@ -520,32 +498,20 @@ namespace TFG_Proyect.Migrations
 
             modelBuilder.Entity("TfgApi.Models.Routine", b =>
                 {
+                    b.HasOne("TfgApi.Models.DayOfWeek", "DayOfWeek")
+                        .WithMany()
+                        .HasForeignKey("DayOfWeekId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("TfgApi.Models.User", "User")
                         .WithMany("Routines")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("TfgApi.Models.RoutineDay", b =>
-                {
-                    b.HasOne("TfgApi.Models.DayOfWeek", "DayOfWeek")
-                        .WithMany()
-                        .HasForeignKey("DayOfWeekId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("TfgApi.Models.Routine", "Routine")
-                        .WithMany("RoutineDays")
-                        .HasForeignKey("RoutineId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("DayOfWeek");
 
-                    b.Navigation("Routine");
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("TfgApi.Models.RoutineExercise", b =>
@@ -569,8 +535,6 @@ namespace TFG_Proyect.Migrations
 
             modelBuilder.Entity("TfgApi.Models.Routine", b =>
                 {
-                    b.Navigation("RoutineDays");
-
                     b.Navigation("RoutineExercises");
                 });
 

@@ -1,53 +1,205 @@
+using System.Text.Json;
 using TfgApi.Models;
 
 namespace TfgApi.Services;
 
 public class ExerciseApiService : IExerciseApiService
 {
-    //  With  HttpClient, we can send request to URLs an get answers
-    //  The "readonly" is because we are only going to set it in the constructor, readonly means only can be set when declared or in the constructor    
     private readonly HttpClient httpClient;
+    private readonly string contentRootPath;
+    private static List<ExerciseItemDTO>? cachedExercises;
+    private static List<ExerciseItemDTO>? localExercises;
+    private static readonly SemaphoreSlim fetchLock = new(1, 1);
+    private static bool triedExternal;
 
-    public ExerciseApiService(HttpClient httpClient)
+    private static readonly string[] AllBodyParts = ["chest", "back", "shoulders", "upper arms", "upper legs", "lower legs", "waist", "cardio"];
+
+    private static readonly Dictionary<string, List<string>> MuscleToBodyParts = new()
     {
-        // HttpCLient is injected by ASP.NET, we don't create it ourselves, the system gives it to us already setted up
+        ["abdominals"] = ["waist"],
+        ["obliques"] = ["waist"],
+        ["biceps"] = ["upper arms"],
+        ["triceps"] = ["upper arms"],
+        ["forearms"] = ["lower arms"],
+        ["chest"] = ["chest"],
+        ["pectorals"] = ["chest"],
+        ["middle back"] = ["back"],
+        ["lower back"] = ["back"],
+        ["lats"] = ["back"],
+        ["traps"] = ["shoulders", "back"],
+        ["shoulders"] = ["shoulders"],
+        ["quadriceps"] = ["upper legs"],
+        ["hamstrings"] = ["upper legs"],
+        ["glutes"] = ["upper legs"],
+        ["adductors"] = ["upper legs"],
+        ["abductors"] = ["upper legs"],
+        ["calves"] = ["lower legs"],
+        ["neck"] = ["neck"],
+    };
+
+    public ExerciseApiService(HttpClient httpClient, IHostEnvironment env)
+    {
         this.httpClient = httpClient;
         this.httpClient.BaseAddress = new Uri("https://oss.exercisedb.dev/api/v1/");
+        this.contentRootPath = env.ContentRootPath;
     }
 
-    //  "async" means this method can pause and wait for the internet without freezing the proyect
-    //  "Task<List<...>>" is the returning type. Here returns a list of objects
-    public async Task<List<ExerciseItemDTO>> SearchExerciseAsync( string? name = null, string? muscle = null, int page = 1, int pageSize = 30)
+    public async Task<List<ExerciseItemDTO>> SearchExerciseAsync(string? name = null, string? bodyParts = null, int page = 1, int pageSize = 30)
     {
-        //  Here I build the URL query string step by step, I use a List of strings since is easier to add parts conditionally
-        var queryParts = new List<string>();
-        if (!string.IsNullOrEmpty(name)) queryParts.Add($"name={Uri.EscapeDataString(name)}");
-        if (!string.IsNullOrEmpty(muscle)) queryParts.Add($"muscle={Uri.EscapeDataString(muscle)}");
-        queryParts.Add($"page={page}");
-        queryParts.Add($"pageSize={pageSize}");
+        if (!triedExternal) return await SearchExternalAsync(name, bodyParts, page, pageSize);
 
-        //  Here I join all the parts to create a proper query string
-        var queryString = string.Join("&", queryParts);
+        var source = await GetAllExercisesAsync();
+        var result = source.AsEnumerable();
 
-        //  "await" means it will wait until it gets an answer, but without blocking the program
-        //  "GetFromJsonAsync" sends GET request and then, transform the recieved JSON into a C# object
-        //  and with the "ExerciseSearchResponse" gives the shape
-        var response = await this.httpClient.GetFromJsonAsync<ExerciseSearchResponse>($"exercises?{queryString}");
+        if (!string.IsNullOrEmpty(name))
+            result = result.Where(e => e.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(bodyParts))
+        {
+            var parts = bodyParts.Split(',').Select(p => p.Trim().ToLower()).ToList();
+            result = result.Where(e => e.BodyParts.Any(bp => parts.Contains(bp.ToLower())));
+        }
 
-        //  If the api fails getting a null response, it will return an empty list instead of crashing
-        //  thanks to the "??" which means that "if it is null, use this instead" (null-coalescing operator)
-        return response?.Data ?? new List<ExerciseItemDTO>();
+        return result.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+    }
+
+    private async Task<List<ExerciseItemDTO>> SearchExternalAsync(string? name, string? bodyParts, int page, int pageSize)
+    {
+        try
+        {
+            var queryParts = new List<string>();
+            if (!string.IsNullOrEmpty(name)) queryParts.Add($"name={Uri.EscapeDataString(name)}");
+            if (!string.IsNullOrEmpty(bodyParts)) queryParts.Add($"bodyParts={Uri.EscapeDataString(bodyParts)}");
+            queryParts.Add($"page={page}");
+            queryParts.Add($"pageSize={pageSize}");
+
+            var response = await this.httpClient.GetFromJsonAsync<ExerciseSearchResponse>($"exercises?{string.Join("&", queryParts)}");
+            if (response?.Data != null && response.Data.Count > 0)
+                return response.Data;
+        }
+        catch { }
+
+        triedExternal = true;
+        return await GetAllExercisesAsync();
+    }
+
+    public async Task<List<ExerciseItemDTO>> GetAllExercisesAsync()
+    {
+        if (cachedExercises != null) return cachedExercises;
+
+        var entered = await fetchLock.WaitAsync(0);
+        if (!entered)
+        {
+            await fetchLock.WaitAsync();
+            fetchLock.Release();
+            return cachedExercises ?? [];
+        }
+
+        try
+        {
+            if (cachedExercises != null) return cachedExercises;
+
+            if (!triedExternal)
+            {
+                var external = await TryFetchExternalAllAsync();
+                if (external.Count > 0)
+                {
+                    cachedExercises = external;
+                    return new List<ExerciseItemDTO>(cachedExercises);
+                }
+                triedExternal = true;
+            }
+
+            cachedExercises = LoadLocalExercises();
+            return new List<ExerciseItemDTO>(cachedExercises);
+        }
+        finally
+        {
+            if (entered) fetchLock.Release();
+        }
+    }
+
+    private async Task<List<ExerciseItemDTO>> TryFetchExternalAllAsync()
+    {
+        try
+        {
+            var results = new List<List<ExerciseItemDTO>>();
+            foreach (var bp in AllBodyParts)
+            {
+                var r = await FetchByBodyPartAsync(bp);
+                if (r.Count > 0) results.Add(r);
+                await Task.Delay(300);
+            }
+            return results.SelectMany(r => r).DistinctBy(e => e.ExerciseId).ToList();
+        }
+        catch { return []; }
+    }
+
+    private async Task<List<ExerciseItemDTO>> FetchByBodyPartAsync(string bodyPart)
+    {
+        try
+        {
+            var response = await this.httpClient.GetFromJsonAsync<ExerciseSearchResponse>($"exercises?bodyParts={Uri.EscapeDataString(bodyPart)}&pageSize=30");
+            return response?.Data ?? [];
+        }
+        catch { return []; }
+    }
+
+    private List<ExerciseItemDTO> LoadLocalExercises()
+    {
+        if (localExercises != null) return localExercises;
+
+        var path = Path.Combine(contentRootPath, "Data", "exercises.json");
+        if (!File.Exists(path)) return [];
+
+        var json = File.ReadAllText(path);
+        var raw = JsonSerializer.Deserialize<List<LocalExercise>>(json);
+        if (raw == null) return [];
+
+        localExercises = raw.Select(MapToDto).ToList();
+        return localExercises;
+    }
+
+    private ExerciseItemDTO MapToDto(LocalExercise ex)
+    {
+        var bodyParts = ex.PrimaryMuscles
+            .SelectMany(m => MuscleToBodyParts.TryGetValue(m.ToLower(), out var bp) ? bp : [])
+            .Distinct()
+            .ToList();
+
+        if (bodyParts.Count == 0)
+            bodyParts.Add("other");
+
+        var gifUrl = ex.Images.Count > 0
+            ? $"https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/{ex.Images[0]}"
+            : null;
+
+        return new ExerciseItemDTO
+        {
+            ExerciseId = ex.Id,
+            Name = ex.Name,
+            BodyParts = bodyParts,
+            Equipments = string.IsNullOrEmpty(ex.Equipment) ? [] : [ex.Equipment],
+            TargetMuscles = ex.PrimaryMuscles,
+            SecondaryMuscles = ex.SecondaryMuscles,
+            GifUrl = gifUrl ?? "",
+            Instructions = ex.Instructions
+        };
     }
 
     public async Task<ExerciseItemDTO?> GetExerciseByIdAsync(string exerciseId)
     {
-        var response = await this.httpClient.GetFromJsonAsync<ExerciseApiResponse>($"exercise/{exerciseId}");
-        return response?.Data;
-    }
+        if (!triedExternal)
+        {
+            try
+            {
+                var response = await this.httpClient.GetFromJsonAsync<ExerciseApiResponse>($"exercise/{exerciseId}");
+                if (response?.Data != null) return response.Data;
+            }
+            catch { }
+            triedExternal = true;
+        }
 
-    /*public async Task<ExerciseItemDTO?> GetRandomExerciseAsync()
-    {
-        var response = await this.httpClient.GetFromJsonAsync<ExerciseApiResponse>("exercise/random");
-        return response?.Data;
-    }*/
+        var all = await GetAllExercisesAsync();
+        return all.FirstOrDefault(e => e.ExerciseId == exerciseId);
+    }
 }
